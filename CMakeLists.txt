@@ -1,0 +1,5 @@
+cmake_minimum_required(VERSION 2.8)
+project( Shapes )
+find_package( OpenCV REQUIRED )
+add_executable( shapes shapes.cpp )
+target_link_libraries( shapes ${OpenCV_LIBS} )
