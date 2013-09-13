@@ -1,4 +1,3 @@
-pinball-usp
-===========
+# Pinball USP
 
-Pinball USP
+Code for the Project Pinball USP
