@@ -1,7 +1,7 @@
 #include <iostream>
 #include <cmath>
 #include <ctime>
- 
+
 // USB pololu
 #include <fcntl.h>
 #include <unistd.h>
@@ -53,12 +53,20 @@ int main(int argc, char *argv[]) {
   // keyboard action
   int key;
 
+  //int resW = 1280, resH = 720;
+  int resW = 320, resH = 176;
 
   VideoCapture cap(1); // 0=default, 1=usb
   if(!cap.isOpened())
     return -1;
-  cap.set(CV_CAP_PROP_FRAME_WIDTH, 640);
-  cap.set(CV_CAP_PROP_FRAME_HEIGHT, 480);
+
+  printf("H = %g, W = %g\n", cap.get(CV_CAP_PROP_FRAME_WIDTH), cap.get(CV_CAP_PROP_FRAME_HEIGHT));
+
+  cap.set(CV_CAP_PROP_FRAME_WIDTH, resW);
+  cap.set(CV_CAP_PROP_FRAME_HEIGHT, resH);
+
+  printf("H = %g, W = %g\n", cap.get(CV_CAP_PROP_FRAME_WIDTH), cap.get(CV_CAP_PROP_FRAME_HEIGHT));
+
   Scalar green = Scalar( 0, 255, 0 );
   Scalar red = Scalar(0, 0, 255);
   Scalar blue = Scalar(255, 0, 0);
@@ -71,11 +79,19 @@ int main(int argc, char *argv[]) {
   namedWindow("WebCam", 0);
   namedWindow("Motion", 0);
   namedWindow("Warp", 0);
-  warp = imread("notfound.png", 1);
-  delta = imread("notfound.png", 1);
-  drawyellow.create(480, 640, CV_8UC3);
-  drawgreen.create(480, 640, CV_8UC3);
-  drawpads.create(480, 640, CV_8UC3);
+  //warp = imread("notfound.png", 1);
+  //delta = imread("notfound.png", 1);
+
+  greenpts.create(resH, resW, CV_8UC3);
+  newf.create(resH, resW, CV_8UC3);
+  oldf.create(resH, resW, CV_8UC3);
+  yellowgoal.create(resH, resW, CV_8UC3);
+
+  warp.create(resH, resW, CV_8UC3);
+  delta.create(resH, resW, CV_8UC3);
+  drawyellow.create(resH, resW, CV_8UC3);
+  drawgreen.create(resH, resW, CV_8UC3);
+  drawpads.create(resH, resW, CV_8UC3);
 
 
 
@@ -199,9 +215,9 @@ int main(int argc, char *argv[]) {
 
 	vector<Point2f> newedge(4);
 	newedge[0].x = 000.0; newedge[0].y = 000.0;
-	newedge[1].x = 640.0; newedge[1].y = 000.0;
-	newedge[2].x = 640.0; newedge[2].y = 480.0;
-	newedge[3].x = 000.0; newedge[3].y = 480.0;
+	newedge[1].x = (double) resW; newedge[1].y = 000.0;
+	newedge[2].x = (double) resW; newedge[2].y = (double) resH;
+	newedge[3].x = 000.0; newedge[3].y = (double) resH;
 
 	vector<Point2f> oldedge(4);
 
@@ -239,8 +255,8 @@ int main(int argc, char *argv[]) {
 	findgreen = FALSE;
 
       } else {// if != 4
-	warp = imread("notfound.png", 1);
-	delta = imread("notfound.png", 1);
+	warp.setTo(Scalar(0,0,0)); // clear = imread("notfound.png", 1);
+	delta.setTo(Scalar(0,0,0)); // clear = imread("notfound.png", 1);
       }
 
     } // if green
@@ -338,7 +354,7 @@ int main(int argc, char *argv[]) {
       // pads area sizes
       if (goalr > 0) {
 	double max = 2.0, min = 0.5;
-	double LR = goalx/640.0; // 0 .. 1
+	double LR = goalx/((double) resW); // 0 .. 1
 
 	// left pad lateral sides
 	padA[0] = min + fabs(0.0-LR)*(max-min);
@@ -389,7 +405,7 @@ int main(int argc, char *argv[]) {
       cvtColor(warp, newf, CV_BGR2GRAY);
       if (first_frame) {
 	oldf = newf.clone();
-	delta = imread("notfound.png", 1);
+	delta.setTo(Scalar(0,0,0)); // clear = imread("notfound.png", 1);
 	first_frame = false;
       } else {
 	absdiff(newf, oldf, delta);
@@ -415,7 +431,7 @@ int main(int argc, char *argv[]) {
 	posX = sumX/norm;
 	posY = sumY/norm;
       }
-      if (posX < 0 || posY < 0 || posX > 640 || posY > 480) {
+      if (posX < 0 || posY < 0 || posX > resW || posY > resH) {
 	posX = posY = -1.0;
 	bola.x = bola.y = -1.0;
       }
@@ -438,11 +454,14 @@ int main(int argc, char *argv[]) {
 
       // HISTOGRAM: REAL TIME DATA
       // + only if ball is detected within boundaries
-      if (bola.x > 0 && bola.x < 640 && bola.y > 0 && bola.y < 480) {
-	fprintf(xymap, "%g %g %g %g\n", bola.x, bola.y, vx, vy);
-	fflush(xymap);
-	fprintf(gnuplot, "plot 'xymap.dat' u 1:2 w lp\n");
-	fflush(gnuplot);
+
+      if (!paused && bola.x > 0 && bola.x < resW && bola.y > 40 && bola.y < resH) {
+      	fprintf(xymap, "%g %g %g %g\n", bola.x, bola.y, vx, vy);
+      	fflush(xymap);
+
+      	//fprintf(gnuplot, "plot 'xymap.dat' u 1:2 w lp\n");
+	fprintf(gnuplot, "plot 'xymap.dat' using (bin($1,binwidth)):(1.0) smooth freq with boxes t 'histogram'\n");
+      	fflush(gnuplot);
       }
 
 
@@ -450,16 +469,14 @@ int main(int argc, char *argv[]) {
       // + only if ball is detected within boundaries
       // + only after hit = TRUE
       // + only after pads return to stationary position (delays)
-      /*
-      if (hit == TRUE && vy < 0 && (delayA > 10 && delayD > 10) && bola.x > 0 && bola.x < 640 && bola.y > 0 && bola.y < 480) {
-	//&& fabs(vy) + fabs(vx) < 100
-	fprintf(hist, "%g %g %g %g\n", vx, vy, bola_adv.x, bola_adv.y);
-	fflush(hist);
-	fprintf(gnuplot, "plot 'histogram.dat' using (bin($1,binwidth)):(1.0) smooth freq with boxes t 'histogram'\n");
-	fflush(gnuplot);
-	hit = FALSE;
-      }
-      */
+      // if (hit == TRUE && vy < 0 && (delayA > 10 && delayD > 10) && bola.x > 0 && bola.x < resW && bola.y > 0 && bola.y < resH) {
+      // 	//&& fabs(vy) + fabs(vx) < 100
+      // 	fprintf(hist, "%g %g %g %g\n", vx, vy, bola_adv.x, bola_adv.y);
+      // 	fflush(hist);
+      // 	fprintf(gnuplot, "plot 'histogram.dat' using (bin($1,binwidth)):(1.0) smooth freq with boxes t 'histogram'\n");
+      // 	fflush(gnuplot);
+      // 	hit = FALSE;
+      // }
 
     } // if Mdef
 
@@ -467,7 +484,7 @@ int main(int argc, char *argv[]) {
     add(drawpads, warp, warp);
     add(drawyellow, warp, warp);
     if (paused)
-      putText(warp, "paused", Point(320, 240), FONT_HERSHEY_SIMPLEX, 2.0, red);
+      putText(warp, "paused", Point(resW/2, resH/2), FONT_HERSHEY_SIMPLEX, 1.0, red);
 
     imshow("Motion", delta);
     imshow("Warp", warp);
