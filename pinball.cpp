@@ -54,18 +54,24 @@ int main(int argc, char *argv[]) {
   int key;
 
   //int resW = 1280, resH = 720;
-  int resW = 320, resH = 176;
+  int resW = 640, resH = 480;
+  //int resW = 320, resH = 176;
 
   VideoCapture cap(1); // 0=default, 1=usb
   if(!cap.isOpened())
     return -1;
 
-  printf("H = %g, W = %g\n", cap.get(CV_CAP_PROP_FRAME_WIDTH), cap.get(CV_CAP_PROP_FRAME_HEIGHT));
+  printf("W = %g, H = %g\n", cap.get(CV_CAP_PROP_FRAME_WIDTH), cap.get(CV_CAP_PROP_FRAME_HEIGHT));
 
   cap.set(CV_CAP_PROP_FRAME_WIDTH, resW);
   cap.set(CV_CAP_PROP_FRAME_HEIGHT, resH);
 
-  printf("H = %g, W = %g\n", cap.get(CV_CAP_PROP_FRAME_WIDTH), cap.get(CV_CAP_PROP_FRAME_HEIGHT));
+  resW = (int) cap.get(CV_CAP_PROP_FRAME_WIDTH);
+  resH = (int) cap.get(CV_CAP_PROP_FRAME_HEIGHT);
+
+  printf("W = %i, H = %i\n", resW, resH);
+
+  
 
   Scalar green = Scalar( 0, 255, 0 );
   Scalar red = Scalar(0, 0, 255);
@@ -74,6 +80,7 @@ int main(int argc, char *argv[]) {
 
   Mat frame, greenpts, redpads, warp, newf, oldf, delta, drawgreen, drawpads;
   Mat yellowgoal, drawyellow;
+  Mat track;
   Mat M;
   // opens a window 
   namedWindow("WebCam", 0);
@@ -82,6 +89,7 @@ int main(int argc, char *argv[]) {
   //warp = imread("notfound.png", 1);
   //delta = imread("notfound.png", 1);
 
+  track.create(resH, resW, CV_8UC3);
   greenpts.create(resH, resW, CV_8UC3);
   newf.create(resH, resW, CV_8UC3);
   oldf.create(resH, resW, CV_8UC3);
@@ -106,11 +114,17 @@ int main(int argc, char *argv[]) {
     lastX = -1,
     lastY = -1;
   double vx, vy;
+  double ax, ay, dt;
+  double x0, y0, xt, yt;
+  double trackpos[2][10];
+  double trackV[2][9];
+  double trackA[2][8];
+  double avgV[2], avgA[2];
   Point2f bola, bola_adv;
   double tshift_adv;
   bola.x = -1;
   bola.y = -1;
-
+  int yhist = 0; // count histogram only above this value
 
   // parameters to find green points
   int findgreen = TRUE;
@@ -287,22 +301,21 @@ int main(int argc, char *argv[]) {
 
 	if (padcontours.size() == 2) {
 
+	  padR[0] = padR[1] = (int) ( (padradius[0] + padradius[1])/2.0 );
+	  yhist = (int) ( (padcenter[0].y+padcenter[1].y)/2.0 + 6.0*padR[0] );
+
 	  if (padcenter[0].x > padcenter[1].x) {
 	    xpadcenter[0] = padcenter[0].x;
 	    ypadcenter[0] = padcenter[0].y;
-	    padR[0] = padradius[0];
 
 	    xpadcenter[1] = padcenter[1].x;
 	    ypadcenter[1] = padcenter[1].y;
-	    padR[1] = padradius[1];
 	  } else {
 	    xpadcenter[1] = padcenter[0].x;
 	    ypadcenter[1] = padcenter[0].y;
-	    padR[1] = padradius[0];
 
 	    xpadcenter[0] = padcenter[1].x;
 	    ypadcenter[0] = padcenter[1].y;
-	    padR[0] = padradius[1];
 	  }
 
 	  findred = FALSE;
@@ -384,11 +397,13 @@ int main(int argc, char *argv[]) {
 	aux.push_back(p4);
 	padpolys[i] = aux;
 
-	line(drawpads, p1, p2, red, 4);
-	line(drawpads, p2, p3, red, 4);
-	line(drawpads, p3, p4, red, 4);
-	line(drawpads, p4, p1, red, 4);
+	line(drawpads, p1, p2, red, 2);
+	line(drawpads, p2, p3, red, 2);
+	line(drawpads, p3, p4, red, 2);
+	line(drawpads, p4, p1, red, 2);
       }
+      // edge for the histogram
+      line(drawpads, Point(0, yhist), Point(resW, yhist), green, 1);
 
 
       // ==========================================================
@@ -445,7 +460,7 @@ int main(int argc, char *argv[]) {
       // time shift to fix ball position:
       // + fix capture delay 
       // + advanced motion to fix pad action delay
-      tshift_adv = 0;
+      tshift_adv = 2.0;
       bola_adv.x = bola.x + vx*tshift_adv;
       bola_adv.y = bola.y + vy*tshift_adv;
       // ---
@@ -455,7 +470,7 @@ int main(int argc, char *argv[]) {
       // HISTOGRAM: REAL TIME DATA
       // + only if ball is detected within boundaries
 
-      if (!paused && bola.x > 0 && bola.x < resW && bola.y > 40 && bola.y < resH) {
+      if (!paused && bola.x > 0 && bola.x < resW && bola.y > yhist && bola.y < resH) {
       	fprintf(xymap, "%g %g %g %g\n", bola.x, bola.y, vx, vy);
       	fflush(xymap);
 
@@ -486,6 +501,87 @@ int main(int argc, char *argv[]) {
     if (paused)
       putText(warp, "paused", Point(resW/2, resH/2), FONT_HERSHEY_SIMPLEX, 1.0, red);
 
+    line(delta, Point(0, yhist), Point(resW, yhist), Scalar(255,255,255), 1);
+
+    
+    // aceleracao
+    if (bola.x > 0) {
+
+      for (int i=9; i>0; i--) { // fifo
+	trackpos[0][i] = trackpos[0][i-1]; // x
+	trackpos[1][i] = trackpos[1][i-1]; // y
+      }
+      trackpos[0][0] = bola.x;
+      trackpos[1][0] = bola.y;
+      int dataok = TRUE; // data is ok if all frames have position well defined
+      for (int i=0; i<10; i++)
+	if (trackpos[0][i] < 0 || trackpos[1][i] < 0)
+	  dataok = FALSE;
+      
+      if (dataok) {
+	// printf("POS: ");
+	// for (int i=0; i<10; i++)
+	//   printf("(%g, %g) --", trackpos[0][i], trackpos[1][i]);
+	// printf("\n");
+	
+	// printf("SPD: ");
+	for (int i=0; i<9; i++) {
+	  trackV[0][i] = trackpos[0][i]-trackpos[0][i+1];
+	  trackV[1][i] = trackpos[1][i]-trackpos[1][i+1];
+	  // printf("(%g, %g) --", trackV[0][i], trackV[1][i]);
+	}
+	// printf("\n");
+	
+	// printf("ACE: ");
+	for (int i=0; i<8; i++) {
+	  trackA[0][i] = trackV[0][i]-trackV[0][i+1];
+	  trackA[1][i] = trackV[1][i]-trackV[1][i+1];
+	  // printf("(%g, %g) --", trackA[0][i], trackA[1][i]);
+	}
+	// printf("\n\n\n");
+	
+      } // if dataok
+            
+
+      if (key == 't' || TRUE) {
+	track.setTo(Scalar(0,0,0)); // clear
+
+	avgA[0] = 0.0;
+	avgA[1] = -0.8; // g sin(theta) unidades de pixel/frame^2
+	avgV[0] = vx;
+	avgV[1] = vy;
+	// if (dataok) {
+	//   avgV[0] = avgV[1] = 0.0;
+	//   for (int i=0; i<9; i++) {
+	//     avgV[0] += trackV[0][i]/9.0;
+	//     avgV[1] += trackV[1][i]/9.0;
+	//   }
+	//   avgA[0] = avgA[1] = 0.0;
+	//   for (int i=0; i<8; i++) {
+	//     avgA[0] += trackA[0][i]/8.0;
+	//     avgA[1] += trackA[1][i]/8.0;
+	//   }
+	// }
+
+	dt = 0; // init
+	x0 = xt = bola.x;
+	y0 = yt = bola.y;
+	while (xt > 0 && xt < resW && yt > 0 && yt < resH) {
+	  dt += 1E-2; // time step
+	  x0 = xt;
+	  y0 = yt;
+	  xt = bola.x + avgV[0]*dt + 0.5*avgA[0]*dt*dt;
+	  yt = bola.y + avgV[1]*dt + 0.5*avgA[1]*dt*dt;
+	  
+	  // draw:
+	  line(track, Point(x0, y0), Point(xt, yt), blue, 2);
+	  //circle(track, Point(xt, yt), 5, blue, 1);
+	}
+      }
+    }
+    add(track, warp, warp);
+
+
     imshow("Motion", delta);
     imshow("Warp", warp);
     imshow("WebCam", frame);
@@ -494,7 +590,7 @@ int main(int argc, char *argv[]) {
     count++;
     if (count == 100) {
       time(&end);
-      printf("FPS: %g\n", count/difftime(end, start));
+      //printf("FPS: %g\n", count/difftime(end, start));
       count = 0;
       time(&start);
     }
@@ -526,7 +622,7 @@ int main(int argc, char *argv[]) {
 	maestroSetTarget(fd, 0, 6000);
 	usleep(50000);
 	maestroSetTarget(fd, 0, 1000);
-	delayA = 0;
+	delayA = delayD = 0;
 	hit = TRUE;
       }
       break;
@@ -535,7 +631,7 @@ int main(int argc, char *argv[]) {
 	maestroSetTarget(fd, 1, 6000);
 	usleep(50000);
 	maestroSetTarget(fd, 1, 1000);
-	delayD = 0;
+	delayA = delayD = 0;
 	hit = TRUE;
       }
       break;
