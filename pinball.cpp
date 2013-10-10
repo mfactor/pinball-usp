@@ -365,9 +365,11 @@ int main(int argc, char *argv[]) {
 
 
       // pads area sizes
+      // raio do objeto amarelo: rem objeto => goalr = -1
       if (goalr > 0) {
 	double max = 2.0, min = 0.5;
 	double LR = goalx/((double) resW); // 0 .. 1
+   // goalx - posição do centro do objeto amarelo
 
 	// left pad lateral sides
 	padA[0] = min + fabs(0.0-LR)*(max-min);
@@ -377,31 +379,98 @@ int main(int argc, char *argv[]) {
 	padA[1] = min + fabs(1.0-LR)*(max-min);
 	padB[1] = min + fabs(1.0-LR)*(max-min);
       } else {
-	padA[0] = padB[0] = padA[1] = padB[1] = 2.0;
+	padA[0] = padB[0] = padA[1] = padB[1] = 1.0;
       }
 
 
       // pads polygon
       drawpads.setTo(Scalar(0,0,0)); // clear
-      for (int i=0; i<2; i++) {
-	vector<Point> aux;
-	Point p1, p2, p3, p4;
-	p1 = Point(xpadcenter[i]-padR[i], ypadcenter[i]-padR[i]/2.0);
-	p2 = Point(xpadcenter[i]+padR[i], ypadcenter[i]-padR[i]/2.0);
-	p3 = Point(xpadcenter[i]+padR[i], ypadcenter[i]+padR[i]*padA[i]);
-	p4 = Point(xpadcenter[i]-padR[i], ypadcenter[i]+padR[i]*padB[i]);
 
-	aux.push_back(p1);
-	aux.push_back(p2);
-	aux.push_back(p3);
-	aux.push_back(p4);
-	padpolys[i] = aux;
+      vector<Point> aux0, aux1;
+      Point p1, p2, p3, p4;
+      int i;
+      double alpha3x,alpha4x; // alpha for p3 and alpha for p4
+      double alpha3y,alpha4y; // alpha for p3 and alpha for p4
 
-	line(drawpads, p1, p2, red, 2);
-	line(drawpads, p2, p3, red, 2);
-	line(drawpads, p3, p4, red, 2);
-	line(drawpads, p4, p1, red, 2);
-      }
+      // left and right looking at camera
+      // ball at center => alpha3x = alpha4x = 1.0
+      // ball at right  => alpha3x = -1.0, alpha4x = 3.0
+      // ball at left   => alpha3x = 3.0, alpha4x = -1.0
+      alpha3x = 0.0 + 2.0*posX/resW;
+      alpha4x = 2.0 - 2.0*posX/resW;
+
+      alpha3y = alpha4y = 1.0 + 2.0*abs(vy)/30.0;
+
+      printf("%f \n",vy);
+    
+      // i=0 => left pad (olhando pra camera)
+      //---------- 
+      i=0;
+      p1 = Point(xpadcenter[i]-padR[i], ypadcenter[i]-padR[i]/2.0);
+      p2 = Point(xpadcenter[i]+padR[i], ypadcenter[i]-padR[i]/2.0);
+      p3 = Point(xpadcenter[i]+alpha3x*padR[i], ypadcenter[i]+alpha3y*padR[i]*padA[i]);
+      p4 = Point(xpadcenter[i]-alpha4x*padR[i], ypadcenter[i]+alpha4y*padR[i]*padB[i]);
+      
+      // ordem dos pontos (camera na parte de cima da mesa):
+      //
+      //     \o - right pad
+      //
+      // p1------p2
+      // |       |
+      // |       |
+      // |       |
+      // p4------p3
+      //
+      //    \  /
+      //     C  - camera
+
+      aux0.push_back(p1);
+      aux0.push_back(p2);
+      aux0.push_back(p3);
+      aux0.push_back(p4);
+      padpolys[i] = aux0;
+
+      line(drawpads, p1, p2, red, 2);
+      line(drawpads, p2, p3, red, 2);
+      line(drawpads, p3, p4, red, 2);
+      line(drawpads, p4, p1, red, 2);
+      //----------
+
+
+
+      // i=1 => right pad  (olhando pra camera)
+      //----------
+      i=1;
+      p1 = Point(xpadcenter[i]-padR[i], ypadcenter[i]-padR[i]/2.0);
+      p2 = Point(xpadcenter[i]+padR[i], ypadcenter[i]-padR[i]/2.0);
+      p3 = Point(xpadcenter[i]+alpha3x*padR[i], ypadcenter[i]+alpha3y*padR[i]*padA[i]);
+      p4 = Point(xpadcenter[i]-alpha4x*padR[i], ypadcenter[i]+alpha4y*padR[i]*padB[i]);
+      
+      // ordem dos pontos (camera na parte de cima da mesa):
+      //
+      //     \o - right pad
+      //
+      // p1------p2
+      // |       |
+      // |       |
+      // |       |
+      // p4------p3
+      //
+      //    \  /
+      //     C  - camera
+
+      aux1.push_back(p1);
+      aux1.push_back(p2);
+      aux1.push_back(p3);
+      aux1.push_back(p4);
+      padpolys[i] = aux1;
+
+      line(drawpads, p1, p2, red, 2);
+      line(drawpads, p2, p3, red, 2);
+      line(drawpads, p3, p4, red, 2);
+      line(drawpads, p4, p1, red, 2);
+      //----------
+
       // edge for the histogram
       line(drawpads, Point(0, yhist), Point(resW, yhist), green, 1);
 
